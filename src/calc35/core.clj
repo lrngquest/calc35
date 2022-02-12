@@ -1,7 +1,7 @@
 (ns calc35.core
-  (:import (java.awt Color Dimension Font) 
+  (:import (java.awt Color Dimension Font FontMetrics) 
            (javax.swing JPanel JFrame  JOptionPane)
-           (java.awt.event  KeyListener KeyEvent  MouseListener))
+           (java.awt.event  KeyListener KeyEvent  MouseListener MouseEvent))
   (:require [calc35.mach1  :as mc])
   (:gen-class) )  ;; 2019May14
 
@@ -70,7 +70,7 @@
 
 (def f-fm (atom {:key-font (ftv 0)  :kfm 0  :disp-font (ftv 5)  :dfm 0}) )
 
-(defn init "atom with {key,disp}-font and their font metrics" [ jfrm]
+(defn init "atom with {key,disp}-font and their font metrics" [ ^JFrame jfrm]
   (loop [i  24   key-font (ftv 24)   kfm  (.getFontMetrics jfrm (ftv 24)) ]
     (if (and (> i 6)  ;;find largest font satisfying constraints
              (>= buttonwidth  (+ 4 (.stringWidth kfm "x<>y")))
@@ -86,9 +86,9 @@
               (.getFontMetrics jfrm (ftv (dec i))) )    )  ) )
 
 
-(defn draw-string "" [g s rect fg bg fm]
-  (let [[rx ry wd ht]  rect
-        descent      (.getMaxDescent fm)
+(defn draw-string "" [ ^sun.java2d.SunGraphics2D g  ^String s
+                      [rx ry wd ht] fg bg  ^FontMetrics fm]
+  (let [descent      (.getMaxDescent fm)
         sheight      (.getHeight     fm)
         swidth       (.stringWidth   fm  s) ]
     (.setColor g (bg colormap) ) ;; was color[ fg]
@@ -98,7 +98,8 @@
                  (int (+ ry (/ (- (* 2 ht) sheight) 2) descent)) )    )   )
 
 
-(defn draw-calc "" [g]
+
+(defn draw-calc "" [ ^sun.java2d.SunGraphics2D g]
   (.setColor g (:dk-grey colormap) )
   (.fillRect g 0 DISPLAY_HEIGHT  WINDOW_WIDTH (- WINDOW_HEIGHT DISPLAY_HEIGHT) )
   (.setFont g (:key-font @f-fm))
@@ -107,7 +108,7 @@
       (draw-string g lbl rect fg bg (:kfm @f-fm)) )  )  )
 
 
-(defn draw-disp "" [ g s]
+(defn draw-disp "" [ ^sun.java2d.SunGraphics2D g s]
   (.setFont g (:disp-font @f-fm))
   (draw-string g s  [0 0 WINDOW_WIDTH DISPLAY_HEIGHT]
                :br-red :dk-red  (:dfm @f-fm)  ))
@@ -117,26 +118,26 @@
 
 (defn calc-panel [frame ]
   (proxy [JPanel  KeyListener MouseListener] []
-    (paintComponent [g] 
-      (proxy-super paintComponent g)  ;;why?
+    (paintComponent [ ^sun.java2d.SunGraphics2D g] 
+      ;;(proxy-super paintComponent g)  ;;why?
       (draw-calc g)
       (draw-disp g  (mc/run-instr-seq @aadr) )    )
    
-    (keyPressed [e] 
+    (keyPressed [ ^KeyEvent e] 
       (let [kc    (.getKeyCode e)
             kirow (first (filter (partial kcffn (char kc)) keyinfo)) ]
         (when kirow
           (swap! aadr  (constantly (kirow 3)))
-          (.repaint this))  )    )
+          (.repaint ^JPanel this))  )    )
     (keyReleased [e])  (keyTyped [e])
 
-    (mouseClicked [e]
+    (mouseClicked [ ^MouseEvent e]
       (let [x  (.getX e)
             y  (.getY e) 
             kirow  (first (filter (partial ffn x y) keyinfo)) ]
         (when kirow
           (swap!  aadr  (constantly (kirow 3)))
-          (.repaint this) )   ) )
+          (.repaint ^JPanel this) )   ) )
     (mousePressed [e] )  (mouseReleased[e] ) (mouseEntered [e] )
     (mouseExited  [e] )
     
@@ -145,8 +146,8 @@
 
 (defn calcfn [] 
   (let [frame (JFrame. "calc35")
-        _     (init frame)
-        panel (calc-panel frame )  ]
+        _             (init frame)
+        ^JPanel panel (calc-panel frame )  ]
     (doto panel 
       (.setFocusable true)
       (.addKeyListener panel)  (.addMouseListener panel ) )
