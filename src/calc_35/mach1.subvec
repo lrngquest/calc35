@@ -1,0 +1,248 @@
+(ns calc-35.mach1  (:require [calc-35.rom :as r])
+  (:gen-class) )
+
+(def ms (atom {:a [0 0 0  0 0 0  0 0 0  0 0 0  0 0 ]
+               :b [0 0 0  0 0 0  0 0 0  0 0 0  0 0 ]
+               :c [0 0 0  0 0 0  0 0 0  0 0 0  0 0 ]
+               :d [0 0 0  0 0 0  0 0 0  0 0 0  0 0 ]
+               :e [0 0 0  0 0 0  0 0 0  0 0 0  0 0 ]
+               :f [0 0 0  0 0 0  0 0 0  0 0 0  0 0 ]
+               :m [0 0 0  0 0 0  0 0 0  0 0 0  0 0 ]
+               :s [0 0 0  0 0 0  0 0 0  0 0 0] ;; 12
+               :z [0 0 0  0 0 0  0 0 0  0 0 0  0 0] ;;constant all-zeroes
+               :t [0 0 0  0 0 0  0 0 0  0 0 0  0 0]
+               :p 0
+               :pc 0         :ret 0    :offset 0
+               :carry 0      :prev-carry 0
+               :disp 0       :upTr 1  :cy 0   :lastkey 0})  )
+
+(defn keyrom ""     []     (swap! ms assoc :pc (:lastkey @ms) :upTr 1)  )
+(defn disptoggle "" []     (swap! ms assoc :disp  (- 1 (:disp @ms))  )  )
+(defn dispoff ""    []     (swap! ms assoc :disp 0) )
+
+(defn goto ""   [addr]
+  (when (= 0 (:prev-carry @ms))  (swap! ms assoc  :pc  addr) )  )
+
+(defn jsb   ""  [addr]     (swap! ms assoc  :ret (:pc @ms)  :pc addr) )
+(defn retn  ""  []         (swap! ms assoc  :pc  (:ret @ms) ) )
+(defn sets  ""  [num val]  (swap! ms assoc :s  (assoc (:s @ms)  num val) )  )
+
+(defn tests  "" [num]  ;; :ksft unused; simplify
+  (swap! ms assoc :carry ((:s @ms) num)  :upTr (if (= 0 num)  0  (:upTr @ms))) )
+
+(defn setp   "" [val] (swap! ms assoc :p val))
+(defn testp  "" [num] (swap! ms assoc :carry (if (= (:p @ms) num) 1 0) ) )
+(defn incp   "" []    (swap! ms assoc :p (bit-and 15 (inc (:p @ms)))  ) )
+(defn decp   "" []    (swap! ms assoc :p (bit-and 15 (dec (:p @ms)))  ) )
+(defn setrom "" [num] (swap! ms assoc :offset ([0 256 512] num)) )
+(defn stacka "" []    (swap! ms assoc  :a (:d @ms)  :d (:e @ms)  :e (:f @ms))  )
+
+(defn downrot "" []
+  (swap! ms assoc  :c (:d @ms)  :d (:e @ms)  :e (:f @ms)  :f (:c @ms))   )
+
+(defn clearregs "" []
+  (let [z  (:z @ms)]
+    (swap! ms assoc  :a z  :b z  :c z  :d z  :e z  :f z  :m z) )  )
+
+(defn clears "" [] (swap! ms assoc  :s [0 0 0 0  0 0 0 0  0 0 0 0]) )
+(defn cstack "" [] (swap! ms assoc  :f (:e @ms)  :e (:d @ms)  :d (:c @ms))  )
+
+
+(defn field "internal fn" [val]   (if (= val -1)  (:p @ms)  val)  )
+(defn nonz  "internal fn" [digit] (if (not= 0 digit) 1  0)  )
+
+(defn ifregzero "if b[f] = 0" [rkaa first last]
+  (let [lv   (field last)    fv  (field first)    rtaa  (rkaa @ms)
+        rgsv (if (< lv 13)  (subvec rtaa fv (inc lv))  (subvec rtaa fv) )   ]
+      (swap! ms assoc  :carry (reduce bit-or 0 (map nonz rgsv) )) )  )
+
+
+(defn digitAdd "inner-fn  sum,cout" [aa bb cin]
+  (let [res  (+ aa bb cin)]   (if (> res 9)  [(- res 10)  1]  [res  0] ))  )
+
+(defn digitSub "inner-fn  dif,cout" [aa bb cin]
+  (let [res  (- aa bb cin)]   (if (< res 0)  [(+ res 10)  1]  [res  0] ))  )
+
+(defn arith3 "arith outer fn " [ opFn  rkdd rkaa rkbb first last ci] ;;backport!
+  (let [lv  (field last)    rtaa (rkaa @ms)  rtbb (rkbb @ms)
+        upd  (loop [rtdd  (rkdd @ms)    ci-co  ci    i (field first) ]
+               (if (<= i lv)
+                 (let [ddCo  (opFn (rtaa i) (rtbb i) ci-co) ]
+                   (recur  (assoc rtdd i (ddCo 0))   (ddCo 1)   (inc i) ))
+                 [rtdd  ci-co] )  )   ]  ;; else: exit
+    (swap! ms assoc  rkdd (upd 0)  :carry (upd 1) )  )  )
+
+
+(defn add "arity overloaded fn"
+  ([rkdd rkaa rkbb first last]
+     (add rkdd rkaa rkbb first last  0) )  ;; delegate to 6-param version
+  ([rkdd rkaa rkbb first last ci]
+     (arith3 digitAdd rkdd rkaa rkbb first last  ci) )    )
+
+(defn sub "arity overloaded fn"
+  ([rkdd rkaa rkbb first last]
+     (sub rkdd rkaa rkbb first last  0) )
+  ([rkdd rkaa rkbb first last ci]
+     (arith3 digitSub rkdd rkaa rkbb first last  ci) )    )
+
+
+;; opcodes implemented wi. (above)  add,sub  and optional carry-in
+(defn increg "c15,31"  [rky first last]  (add rky rky :z first last  1) )
+(defn decreg "c11,27"  [rky first last]  (sub rky rky :z first last  1) )
+(defn negc   "c5"          [first last]  (sub :c :z :c first last) )
+(defn negsubc "c7"         [first last]  (sub :c :z :c first last 1))
+(defn regsgte "" [rkaa rkbb first last]  (sub :t rkaa rkbb first last) );;"c2,16
+
+
+;; opcodes implemented wi.  subvec  to avoid iteration
+(defn setreg "" [rkaa rkbb first last]
+  (let [rtaa (rkaa @ms)  rtbb  (rkbb @ms)   lv (field last)  fv (field first)
+        rslft  (subvec rtaa 0 fv)           ;; i.e. 0..fv-1  might be []
+        rmddl  (subvec rtbb fv (inc lv))    ;; i.e. fv..lv
+        rsrgt  (subvec rtaa (inc lv))    ]  ;; i.e. lv..13   might be []
+    (swap! ms assoc  rkaa (vec (concat  rslft rmddl rsrgt)))  )  )
+
+(defn exchreg "" [rkaa rkbb first last]
+  (let [rtaa (rkaa @ms)  rtbb  (rkbb @ms)   lv (field last)  fv (field first)
+        aalft  (subvec rtaa 0 fv)           bblft  (subvec rtbb 0 fv)
+        aamdl  (subvec rtaa fv (inc lv))    bbmdl  (subvec rtbb fv (inc lv))
+        aargt  (subvec rtaa (inc lv))       bbrgt  (subvec rtbb (inc lv))     ]
+    (swap! ms assoc  rkaa (vec (concat aalft bbmdl aargt))
+                     rkbb (vec (concat bblft aamdl bbrgt)))  )  )
+
+(defn shiftr "" [rkaa first last]
+  (let [rtaa (rkaa @ms)  fv (field first)  fvp1 (inc fv)  lvp1 (inc(field last))
+        aalft  (subvec rtaa 0    fv)       ;;ndx    0..m-1  unchg, c/b []
+        aamdl  (subvec rtaa fvp1 lvp1)     ;;ndx  m+1..n
+        aargt  (subvec rtaa lvp1   )    ]  ;;ndx  n+1..13   unchg, c/b []
+    (swap! ms assoc  rkaa (vec (concat aalft aamdl [0] aargt))) )  )
+
+(defn shiftl "" [rkaa first last]
+  (let [rtaa  (rkaa @ms)   fv  (field first)  lv  (field last)  lvp1 (inc lv)
+        aalft  (subvec rtaa  0  fv)     ;;ndx    0..fv-1   c/b []
+        aamdl  (subvec rtaa fv  lv)     ;;ndx   fv..lv-1
+        aargh  (subvec rtaa lvp1  )  ]  ;;ndx fv+1..13     c/b []
+     (swap! ms assoc  rkaa (vec (concat aalft [0] aamdl aargh))) )  )
+
+
+(defn zeroreg "" [rky first last] (setreg rky :z first last))
+
+(defn isz "internal fn" [digit] (if (= 0 digit) 1  0) )
+
+(defn regsgte1 "if a[f] >= 1" [rkaa first last]
+  (let [lv   (field last)    fv (field first)    rtaa  (rkaa @ms)
+        rgsv (if (< lv 13)  (subvec rtaa fv (inc lv))  (subvec rtaa fv) )    ]
+    (swap! ms assoc  :carry (reduce bit-and 1 (map isz rgsv)))    )  )
+
+(defn loadconst "no-op reqd. if p >= 14 !" [num]
+  (let [op  (:p @ms)    oc  (:c @ms)  ]
+    (swap! ms assoc :c (if (< op 14) (assoc  oc op num) oc)
+           :p (bit-and 15 (dec op)) ) )  )
+
+
+(defn decodEx "decode and execute instruction" [opcode]
+  (let [n    (bit-shift-right (bit-and opcode 0x3fc) 2)
+        op   (bit-shift-right opcode 5)
+        fld  (bit-and 7 (bit-shift-right opcode 2) )
+        [first last] ([[-1 -1] [3 12] [0 2] [0 13]
+                       [0 -1]  [3 13] [2 2] [13 13]] fld)
+        arg  (bit-shift-right n 4) ]
+    
+    (case (bit-and opcode 3)
+      3  (goto n)
+      1  (jsb  n)
+      2  (case op
+           0  (ifregzero :b first last)  ;; if b[f] = 0
+           1  (zeroreg :b first last)    ;; 0 -> b[f]
+           2  (regsgte :a :c first last) ;; if a >= c[f]
+           3  (regsgte1 :c first last)   ;; if c[f] >= 1
+           4  (setreg :c :b first last ) ;; b -> c[f]
+           5  (negc first last)          ;; 0 - c -> c[f]
+           6  (zeroreg :c first last)    ;; 0 -> c[f]
+           7  (negsubc first last)       ;; 0 - c -1 -> c[f]
+           8  (shiftl :a first last)     ;; shift left a[f]
+           9  (setreg :b :a first last)  ;; a -> b[f]
+           10 (sub :c :a :c first last)  ;; a - c -> c[f]
+           11 (decreg :c first last)     ;; c - 1 -> c[f]
+           12 (setreg :a :c first last)  ;; c -> a[f]
+           13 (ifregzero :c first last)  ;; if c[f] = 0
+           14 (add :c :a :c first last)  ;; a + c -> c[f]
+           15 (increg :c first last)     ;; c + 1 -> c[f]
+           16 (regsgte :a :b first last) ;; if a >= b[f]
+           17 (exchreg :b :c first last) ;; b exch c[f]
+           18 (shiftr :c first last)     ;; shift right c[f]
+           19 (regsgte1 :a first last)   ;; if a[f] >= 1
+           20 (shiftr :b first last)     ;; shift right b[f]
+           21 (add :c :c :c first last)  ;; c + c -> c[f]
+           22 (shiftr :a first last)     ;; shift right a[f]
+           23 (zeroreg :a first last)    ;; 0 -> a[f]
+           24 (sub :a :a :b first last)  ;; a - b -> a[f]
+           25 (exchreg :a :b first last) ;; a exch b[f]
+           26 (sub :a :a :c first last)  ;; a - c -> a[f]
+           27 (decreg :a first last)     ;; a - 1 -> a[f]
+           28 (add :a :a :b first last)  ;; a + b -> a[f]
+           29 (exchreg :a :c first last) ;; a exch c[f]
+           30 (add :a :a :c first last)  ;; a + c -> a[f]
+           31 (increg :a first last)   ) ;; a + 1 -> a[f]
+      0  (case (bit-and n 0xf)
+           0   0 ;; no-op
+           1   (sets arg 1)
+           3   (setp arg)
+           4   (cond
+                (= arg 3)    (keyrom )
+                (even? arg)   (setrom (bit-shift-right opcode 7))  )
+           5   (tests arg) ;;arg==0 ==> key_input
+           6   (loadconst arg)
+           7   (decp )
+           9   (sets arg 0)
+           10  (case arg
+                 0   (disptoggle )
+                 2   (exchreg :c :m 0 13)
+                 4   (cstack )
+                 6   (stacka )
+                 8   (dispoff )
+                 10  (setreg :c :m 0 13)
+                 12  (downrot )
+                 14  (clearregs )    )
+           11  (testp arg)
+           12  (retn )
+           13  (clears )
+           15  (incp )     )
+      ))
+  (swap! ms assoc :cy (inc (:cy @ms)) )  ;; optional to count cycles
+  )
+
+
+(defn disp "" []
+  (loop [i 13   dstr ""]
+    (if (>= i 0)
+      (recur
+       (dec i)
+       (let [ai ((:a @ms)i)   bi ((:b @ms)i)
+             d1  (cond
+                  (>= bi 8)              (str dstr " ")
+                  (or (= i 2) (= i 13))  (str dstr (if (>= ai 8) "-" " "))
+                  :else                  (str dstr ai))
+             d2  (if (= bi 2)  (str d1 ".")  d1)  ]
+         d2)  )
+      
+      dstr) )   )
+
+
+
+(defn run-instrs "run from  offset+pc until wait-loop" [rom ]
+  (loop []
+    (let [pc (:pc @ms)  upTr (:upTr @ms)  ra (+ (:offset @ms) pc)]
+      
+      (swap! ms assoc :prev-carry (:carry @ms)  :carry 0
+             :pc (bit-and (inc pc) 255) )
+      
+      (decodEx (rom  ra) )
+                      ;; wait-loop detected ---v  ==> suspend at checkpoint
+      (if (and (= upTr 1) (= 0 (:upTr @ms)))   0   (recur )) )  )  )
+
+
+(defn run-instr-seq "" [ksra]
+  (swap! ms assoc  :lastkey  ksra   :s  (assoc (:s @ms)  0 1) )
+  (run-instrs r/romV4)
+  (disp )  )
