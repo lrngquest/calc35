@@ -5,17 +5,23 @@
 
 (def lastdisp (atom ""))
 
-(defn -main "simple cli from *in" [& args]  
- (mc/run-instrs r/romV4) ;;default rom:0 ==> power on seq.
- (println (mc/disp) " power on." )
+(defn -main "simple cli from *in" [& args]
+  
+ (mc/run-instrs r/romV4)  ;;default rom:0 ==> power on seq.
+ (println (mc/disp) )
 
  (with-open [r (clojure.java.io/reader *in*) ]
    (doseq [line (line-seq r)]
      (let [ vch  (vec (seq line))  ]
        (println line)
-       (doseq [i (range (count vch))]
-         (reset! lastdisp  (mc/run-instr-seq (r/afmap (vch i)))) )
+
+       ;; Run cmds only when 1st char is a valid cmd-abbreviation
+       ;;  implicitly treating others as comments
        
-       (println @lastdisp) ;; could add  (println @lastdisp)  in doseq i
-       ) )  )
- )
+       (when  (r/afmap (vch 0))
+         (doseq [i (range (count vch))]
+           (reset! lastdisp  (mc/run-instr-seq (r/afmap (vch i)))) )
+         
+         (println @lastdisp) )
+
+       ) )  )   )

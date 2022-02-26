@@ -1,0 +1,2 @@
+; Collection solid angle from pt source  HP-J 1972-06 p7  Expect:  .1772825509
+2.5 10.3/ *1+fq~ 1+2*p*

@@ -1,0 +1,2 @@
+; Great Circle dist San Francisco..Miami  HP-J 1972-06 p7  Expect: 2254.093016
+52.4c64.3c*52.4s64.3s*42.3c*+ac60*
