@@ -62,44 +62,49 @@ Normal GUI operation  (from dir containing  src/... )
     ```
     $ clojure -M -m  calc-35.core  # start GUI; click on "buttons"
     ```
-Text input/output from CLI
+Text input/output from CLI (can use clojure or babashka)
 
     ```
-    $ clojure -M -m  calc-35.cli
+    $ clojure -M -m  calc-35.cli                 # interactive use case
        # Enter cmd-char-abbrevs, as in  core.clj  keyinfo ("column" 4).
        # (control-d) when done.
 
-    $ clojure -M -m  calc-35.cli  <script.txt
+    $ clojure -M -m  calc-35.script  file1.txt   # "batch" use case
        # a series of cmd-abbrevs. and literal values
     ```
 
 ## Examples
 
-Interactive text input/output; after the ` 0.`, a set of line triples: input, echo, result; then ending with a control-d for EOF.
+Interactive text input/output; after the ` 0.`,  line pairs: input, result; then ending with a control-d for EOF.
 
    ```
-    $ clojure -M -m  calc-35.cli
+    $ bb -cp src -m  calc-35.cli
  0.            
 355 113/
-355 113/
- 3.14159292
+ 3.14159292    
 p
-p
- 3.141592654
--
+ 3.141592654   
 -
  2.66       -07
 ( enter a control-d)
    ```
 
-Running a script from a text file.
+Running a script from a text file(s).
 
    ```
-    $ clojure -M -m calc-35.cli  <p2c.txt   # from a script file
+    $ clojure -M -m  calc-35.script p1c.txt p2c.txt p3c.txt
  0.            
+; Collection solid angle from pt source  HP-J 1972-06 p7  Expect:  .1772825509
+2.5 10.3/ *1+fq~ 1+2*p*
+ .1772825509   
+
 ; Great Circle dist San Francisco..Miami  HP-J 1972-06 p7  Expect: 2254.093016
 52.4c64.3c*52.4s64.3s*42.3c*+ac60*
- 2254.093016
+ 2254.093016   
+
+; pH of a buffer solution.   HP-J 1972-06 p7  Expect: -7.47877778
+7.21 10^.03*1+2.16 10^.0087*+>.03 11.7 10^/.0087 7.21 10^/+</qg
+-7.47877778    
 
    ```
 
@@ -110,7 +115,7 @@ None known.
 ## License
 
 Other than credited above:
-Copyright © 2019-2021   L. E. Vandergriff
+Copyright © 2019-2022   L. E. Vandergriff
 
 Distributed under the Eclipse Public License either version 1.0 or (at your option) any later version.
 
